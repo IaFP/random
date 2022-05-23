@@ -7,6 +7,7 @@
 {-# LANGUAGE Trustworthy #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE QuantifiedConstraints #-}
 
 -- |
 -- Module      :  System.Random.Stateful
@@ -115,6 +116,8 @@ import Data.STRef
 import Foreign.Storable
 import System.Random
 import System.Random.Internal
+
+import GHC.Types (Total)
 
 -- $introduction
 --
@@ -229,13 +232,13 @@ class (RandomGen r, StatefulGen g m) => RandomGenM g r m | g -> r where
 splitGenM :: RandomGenM g r m => g -> m r
 splitGenM = applyRandomGenM split
 
-instance (RandomGen r, MonadIO m) => RandomGenM (IOGenM r) r m where
+instance (RandomGen r, MonadIO m, Total m) => RandomGenM (IOGenM r) r m where
   applyRandomGenM = applyIOGen
 
-instance (RandomGen r, MonadIO m) => RandomGenM (AtomicGenM r) r m where
+instance (RandomGen r, MonadIO m, Total m) => RandomGenM (AtomicGenM r) r m where
   applyRandomGenM = applyAtomicGen
 
-instance (RandomGen r, MonadState r m) => RandomGenM (StateGenM r) r m where
+instance (RandomGen r, MonadState r m, Total m) => RandomGenM (StateGenM r) r m where
   applyRandomGenM f _ = state f
 
 instance RandomGen r => RandomGenM (STGenM r s) r (ST s) where
@@ -349,7 +352,7 @@ newtype AtomicGen g = AtomicGen { unAtomicGen :: g}
 -- | Creates a new 'AtomicGenM'.
 --
 -- @since 1.2.0
-newAtomicGenM :: MonadIO m => g -> m (AtomicGenM g)
+newAtomicGenM :: (MonadIO m, Total m) => g -> m (AtomicGenM g)
 newAtomicGenM = fmap AtomicGenM . liftIO . newIORef
 
 
@@ -364,7 +367,7 @@ globalStdGen :: AtomicGenM StdGen
 globalStdGen = AtomicGenM theStdGen
 
 
-instance (RandomGen g, MonadIO m) => StatefulGen (AtomicGenM g) m where
+instance (RandomGen g, MonadIO m, Total m) => StatefulGen (AtomicGenM g) m where
   uniformWord32R r = applyAtomicGen (genWord32R r)
   {-# INLINE uniformWord32R #-}
   uniformWord64R r = applyAtomicGen (genWord64R r)
@@ -380,7 +383,7 @@ instance (RandomGen g, MonadIO m) => StatefulGen (AtomicGenM g) m where
   uniformShortByteString n = applyAtomicGen (genShortByteString n)
 
 
-instance (RandomGen g, MonadIO m) => FrozenGen (AtomicGen g) m where
+instance (RandomGen g, MonadIO m, Total m) => FrozenGen (AtomicGen g) m where
   type MutableGen (AtomicGen g) m = AtomicGenM g
   freezeGen = fmap AtomicGen . liftIO . readIORef . unAtomicGenM
   thawGen (AtomicGen g) = newAtomicGenM g
@@ -434,12 +437,12 @@ newtype IOGen g = IOGen { unIOGen :: g }
 -- | Creates a new 'IOGenM'.
 --
 -- @since 1.2.0
-newIOGenM :: MonadIO m => g -> m (IOGenM g)
+newIOGenM :: (MonadIO m, Total m) => g -> m (IOGenM g)
 newIOGenM = fmap IOGenM . liftIO . newIORef
 
 
 
-instance (RandomGen g, MonadIO m) => StatefulGen (IOGenM g) m where
+instance (RandomGen g, MonadIO m, Total m) => StatefulGen (IOGenM g) m where
   uniformWord32R r = applyIOGen (genWord32R r)
   {-# INLINE uniformWord32R #-}
   uniformWord64R r = applyIOGen (genWord64R r)
@@ -455,7 +458,7 @@ instance (RandomGen g, MonadIO m) => StatefulGen (IOGenM g) m where
   uniformShortByteString n = applyIOGen (genShortByteString n)
 
 
-instance (RandomGen g, MonadIO m) => FrozenGen (IOGen g) m where
+instance (RandomGen g, MonadIO m, Total m) => FrozenGen (IOGen g) m where
   type MutableGen (IOGen g) m = IOGenM g
   freezeGen = fmap IOGen . liftIO . readIORef . unIOGenM
   thawGen (IOGen g) = newIOGenM g

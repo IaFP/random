@@ -11,6 +11,7 @@
 {-# LANGUAGE MagicHash            #-}
 {-# LANGUAGE ScopedTypeVariables  #-}
 {-# LANGUAGE TypeOperators        #-}
+{-# LANGUAGE QuantifiedConstraints #-}
 
 module System.Random.GFinite
   ( Cardinality(..)
@@ -24,7 +25,7 @@ import Data.Void
 import Data.Word
 import GHC.Exts (Proxy#, proxy#)
 import GHC.Generics
-
+import GHC.Types (type(@))
 -- | Cardinality of a set.
 data Cardinality
   = Shift !Int -- ^ Shift n is equivalent to Card (bit n)
@@ -98,11 +99,17 @@ class Finite a where
   cardinality _ = gcardinality (proxy# :: Proxy# (Rep a))
   {-# INLINE cardinality #-}
 
-  default toFinite :: (Generic a, GFinite (Rep a)) => Integer -> a
+  default toFinite :: (
+    forall x. Rep a @ x,
+    Generic a,
+    GFinite (Rep a)) => Integer -> a
   toFinite = to . toGFinite
   {-# INLINE toFinite #-}
 
-  default fromFinite :: (Generic a, GFinite (Rep a)) => a -> Integer
+  default fromFinite :: (
+    forall x. Rep a @ x,
+    Generic a,
+    GFinite (Rep a)) => a -> Integer
   fromFinite = fromGFinite . from
   {-# INLINE fromFinite #-}
 

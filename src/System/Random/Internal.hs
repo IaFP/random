@@ -20,6 +20,9 @@
 {-# LANGUAGE TypeFamilies #-}
 #endif
 {-# OPTIONS_HADDOCK hide, not-home #-}
+{-# LANGUAGE QuantifiedConstraints #-}
+{-# LANGUAGE ExplicitNamespaces #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
 
 -- |
 -- Module      :  System.Random.Internal
@@ -103,6 +106,8 @@ import GHC.ForeignPtr
 #else
 import Data.ByteString (ByteString)
 #endif
+
+import GHC.Types (Total, type(@), WDT)
 
 -- Needed for WORDS_BIGENDIAN
 #include "MachDeps.h"
@@ -219,7 +224,7 @@ class RandomGen g where
 -- | 'StatefulGen' is an interface to monadic pseudo-random number generators.
 --
 -- @since 1.2.0
-class Monad m => StatefulGen g m where
+class (Total m, Monad m) => StatefulGen g m where
   {-# MINIMAL (uniformWord32|uniformWord64) #-}
   -- | @uniformWord32R upperBound g@ generates a 'Word32' that is uniformly
   -- distributed over the range @[0, upperBound]@.
@@ -324,7 +329,7 @@ data MBA = MBA (MutableByteArray# RealWorld)
 --
 -- @since 1.2.0
 genShortByteStringIO ::
-     MonadIO m
+     (MonadIO m, Total m)
   => Int -- ^ Number of bytes to generate
   -> m Word64 -- ^ IO action that can generate 8 random bytes at a time
   -> m ShortByteString
@@ -442,7 +447,7 @@ data StateGenM g = StateGenM
 newtype StateGen g = StateGen { unStateGen :: g }
   deriving (Eq, Ord, Show, RandomGen, Storable, NFData)
 
-instance (RandomGen g, MonadState g m) => StatefulGen (StateGenM g) m where
+instance (RandomGen g, MonadState g m, Total m) => StatefulGen (StateGenM g) m where
   uniformWord32R r _ = state (genWord32R r)
   {-# INLINE uniformWord32R #-}
   uniformWord64R r _ = state (genWord64R r)
@@ -458,7 +463,7 @@ instance (RandomGen g, MonadState g m) => StatefulGen (StateGenM g) m where
   uniformShortByteString n _ = state (genShortByteString n)
   {-# INLINE uniformShortByteString #-}
 
-instance (RandomGen g, MonadState g m) => FrozenGen (StateGen g) m where
+instance (RandomGen g, MonadState g m, Total m) => FrozenGen (StateGen g) m where
   type MutableGen (StateGen g) m = StateGenM g
   freezeGen _ = fmap StateGen get
   thawGen (StateGen g) = StateGenM <$ put g
@@ -609,8 +614,11 @@ class Uniform a where
   --
   -- @since 1.2.0
   uniformM :: StatefulGen g m => g -> m a
-
-  default uniformM :: (StatefulGen g m, Generic a, GUniform (Rep a)) => g -> m a
+  default uniformM :: (
+    forall x. Rep a @ x,
+    StatefulGen g m,
+    Generic a,
+    GUniform (Rep a)) => g -> m a
   uniformM = fmap to . (`runContT` pure) . guniformM
   {-# INLINE uniformM #-}
 
@@ -621,7 +629,7 @@ class Uniform a where
 -- makes 'fmap' and '>>=' used in 'guniformM' monomorphic, so GHC is able to
 -- specialize 'Generic' instance reasonably close to a handwritten one.
 class GUniform f where
-  guniformM :: StatefulGen g m => g -> ContT r m (f a)
+  guniformM :: (Total m, StatefulGen g m) => g -> ContT r m (f a)
 
 instance GUniform f => GUniform (M1 i c f) where
   guniformM = fmap M1 . guniformM
@@ -666,7 +674,11 @@ finiteUniformM = fmap toGFinite . case gcardinality (proxy# :: Proxy# f) of
 -- >>> uniformListM 5 gen :: IO [Triple]
 -- [Triple 60 226 48,Triple 234 194 151,Triple 112 96 95,Triple 51 251 15,Triple 6 0 208]
 --
-uniformViaFiniteM :: (StatefulGen g m, Generic a, GFinite (Rep a)) => g -> m a
+uniformViaFiniteM :: (
+  forall x. Rep a @ x,
+  StatefulGen g m,
+  Generic a,
+  GFinite (Rep a)) => g -> m a
 uniformViaFiniteM = fmap to . finiteUniformM
 {-# INLINE uniformViaFiniteM #-}
 
@@ -738,11 +750,18 @@ class UniformRange a where
   -- @since 1.3.0
   isInRange :: (a, a) -> a -> Bool
 
-  default uniformRM :: (StatefulGen g m, Generic a, GUniformRange (Rep a)) => (a, a) -> g -> m a
+  default uniformRM :: (
+    forall x. Rep a @ x,
+    StatefulGen g m,
+    Generic a,
+    GUniformRange (Rep a)) => (a, a) -> g -> m a
   uniformRM (a, b) = fmap to . (`runContT` pure) . guniformRM (from a, from b)
   {-# INLINE uniformRM #-}
 
-  default isInRange :: (Generic a, GUniformRange (Rep a)) => (a, a) -> a -> Bool
+  default isInRange :: (
+    forall x. Rep a @ x,
+    Generic a,
+    GUniformRange (Rep a)) => (a, a) -> a -> Bool
   isInRange (a, b) x = gisInRange (from a, from b) (from x)
   {-# INLINE isInRange #-}
 
